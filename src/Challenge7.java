@@ -1,8 +1,13 @@
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
+
+import sun.jvm.hotspot.runtime.Bytes;
 
 public class Challenge7 {
     private static final char[] CRACK_ALPHABET = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
@@ -10,14 +15,18 @@ public class Challenge7 {
             'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'};
 
     private static final String PRINT_SECTION_SEPARATOR = "---";
+    private final String originalMessage;
+    private final String modifiedMessage;
+    private String preamble;
+    private String body;
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
         long numberOfSamples = scanner.nextInt();
-        Challenge7 challenge7 = new Challenge7();
         for (int i = 0; i < numberOfSamples; i++) {
             String originalMessage = readMessage(scanner);
             String modifiedMessage = readMessage(scanner);
+            Challenge7 challenge7 = new Challenge7(originalMessage, modifiedMessage);
             System.out.printf("Case #%d: \n", (i + 1));
             System.out.printf("Original message: %s\n", originalMessage);
             System.out.printf("Modified message: %s\n", modifiedMessage);
@@ -25,9 +34,18 @@ public class Challenge7 {
                               Arrays.toString(challenge7.notSoComplexHash(originalMessage)));
             System.out.printf("Modified message hash: %s\n",
                               Arrays.toString(challenge7.notSoComplexHash(modifiedMessage)));
-            challenge7.crackMessage(originalMessage, modifiedMessage);
+            challenge7.crackMessage();
         }
         scanner.close();
+    }
+
+    public Challenge7(String originalMessage, String modifiedMessage) {
+        this.originalMessage = originalMessage;
+        this.modifiedMessage = modifiedMessage;
+        int printSectionIndex = modifiedMessage.indexOf(PRINT_SECTION_SEPARATOR);
+        this.preamble = modifiedMessage.substring(0, printSectionIndex)
+                + PRINT_SECTION_SEPARATOR;
+        this.body = modifiedMessage.substring(printSectionIndex + PRINT_SECTION_SEPARATOR.length());
     }
 
     private static String readMessage(Scanner scanner) {
@@ -73,98 +91,107 @@ public class Challenge7 {
         return hash;
     }
 
-    public String crackMessage(String originalMessage, String modifiedMessage) {
+    public String crackMessage() {
+        byte[] hashOriginalMessage = notSoComplexHash(originalMessage);
+        byte[] hashModifiedMessage = notSoComplexHash(modifiedMessage);
+        System.out.printf("Original message hash: %s\n", Arrays.toString(hashOriginalMessage));
+        System.out.printf("Modified message hash: %s\n", Arrays.toString(hashModifiedMessage));
+
+        Map<Integer, List<Byte>> crack = new HashMap<>();
+        for (int i = 0; i < 16; i++) {
+            crack.put(i, getCrackForByte(hashOriginalMessage[i], hashModifiedMessage[i]));
+            System.out.printf("Crack [%d] = %s\n", i, crack.get(i));
+        }
+        String crackString = buildCrackString(crack);
+        System.out.printf("Crack = %s\n", crackString);
+        //System.out.printf("Cracked message: %s\n", crackedMessage);
+        //System.out.printf("Cracked message hash: %s\n",
+        //                  Arrays.toString(notSoComplexHash(crackedMessage)));
+
+        return crack.toString();
+    }
+
+    public String buildCrackString(Map<Integer, List<Byte>> crack) {
+        StringBuilder crackString = new StringBuilder();
+        int j = 0;
+        for (int i = 0; i < 16; i++) {
+            List<Byte> crackBytes = crack.get(i);
+            if (j >= crackBytes.size()) {
+                continue;
+            }
+            crackString.append(crack.get(j));
+        }
+        System.out.printf("Crack: %s\n", crackString.toString());
+        return crackString.toString();
+    }
+
+    public String crackMessage2() {
         byte[] hashOriginalMessage = notSoComplexHash(originalMessage);
         System.out.printf("Original message hash: %s\n", Arrays.toString(hashOriginalMessage));
-        System.out.printf("Modified message hash: %s\n", Arrays.toString(notSoComplexHash(modifiedMessage)));
+        System.out.printf("Modified message hash: %s\n", Arrays.toString(notSoComplexHash(this.modifiedMessage)));
 
-        String crack = "";
-        byte[] hashCrackedMessage = notSoComplexHash(buildCrackedMessage(modifiedMessage, crack));
+        String crack = "0000000000000000";
         long k = 0;
-        while (!areEquals(hashOriginalMessage, hashCrackedMessage) && k < 150) {
-            crack = nextCrack(crack);
-            System.out.printf("Crack [%d]: %s\n", k, crack);
-            String crackedMessage = buildCrackedMessage(modifiedMessage, crack);
-//            System.out.printf("Cracked message: %s\n", crackedMessage);
-            hashCrackedMessage = notSoComplexHash(crackedMessage);
-            System.out.printf("Cracked message hash: %s\n", Arrays.toString(hashCrackedMessage));
+        String crackedMessage = buildCrackedMessage(crack);
+        //while (!hasSameHash(crackedMessage, hashOriginalMessage) && k < 20000) {
+        while (!hasSameHash(crackedMessage, hashOriginalMessage)) {
+            crack = incrementCrack(crack);
+            //System.out.printf("Crack [%d]: %s\n", k, crack);
+            crackedMessage = buildCrackedMessage(crack);
+            //System.out.printf("Cracked message: %s\n", crackedMessage);
             k++;
         }
         System.out.printf("K = %d\n", k);
+        System.out.printf("Cracked message: %s\n", crackedMessage);
+        System.out.printf("Cracked message hash: %s\n",
+                          Arrays.toString(notSoComplexHash(crackedMessage)));
+
         return crack;
     }
 
-    public String crackMessage3(String originalMessage, String modifiedMessage) {
-        byte[] hashOriginalMessage = notSoComplexHash(originalMessage);
-        System.out.printf("Original message hash: %s\n", Arrays.toString(hashOriginalMessage));
-        System.out.printf("Original message hash value: %d\n", sumByteArray(hashOriginalMessage));
-        System.out.printf("Original message hash value as int: %d\n", sumByteArrayAsInt(hashOriginalMessage));
-
-        String crack = "";
-        byte[] hashCrackedMessage = notSoComplexHash(buildCrackedMessage(modifiedMessage, crack));
-        int k = 0;
-        int printSectionIndex = modifiedMessage.indexOf(PRINT_SECTION_SEPARATOR);
-        int i = 0;
-        String goodCrack = "03W000000S0e0000Xzzwue08BzQz0Z0DzzzzzzRzzzzzez_zz";
-        while (!areEquals(hashOriginalMessage, hashCrackedMessage) && k < 100) {
-            crack += goodCrack.charAt(i++);
-            System.out.printf("Crack [%d]: %s\n", k, crack);
-            String crackedMessage = buildCrackedMessage(modifiedMessage, crack);
-            System.out.printf("Cracked message: %s\n", crackedMessage);
-            hashCrackedMessage = notSoComplexHash(crackedMessage);
-            System.out.printf("Cracked message hash: %s\n", Arrays.toString(hashCrackedMessage));
-            System.out.printf("Cracked message hash value: %d\n", sumByteArray(hashCrackedMessage));
-            System.out.printf("Cracked message hash value as int: %d\n", sumByteArrayAsInt(hashCrackedMessage));
-            k++;
+/*
+    public void incrementCrack(int position) {
+        LinkedList<Byte> values = this.crack.get(position);
+        Byte value = values.getLast();
+        value++;
+        if (value > 'z') {
+            value = '0';
+            values.add((byte) '0');
+            values.
         }
-        System.out.printf("K = %d\n", k);
-        return crack;
     }
+*/
 
-    public String crackMessage2(String originalMessage, String modifiedMessage) {
-        byte[] hashOriginalMessage = notSoComplexHash(originalMessage);
-
-        String crack = "0";
-        byte[] hashCrackedMessage = notSoComplexHash(buildCrackedMessage(modifiedMessage, crack));
-        int k = 0;
-        int printSectionIndex = modifiedMessage.indexOf(PRINT_SECTION_SEPARATOR);
-        while (!areEquals(hashOriginalMessage, hashCrackedMessage) && k < 100) {
-            int indexAffected = (printSectionIndex + 2 + crack.length()) % 16;
-//            System.out.printf("Hash index affected: %d\n", indexAffected);
-            if (hashCrackedMessage[indexAffected] != hashOriginalMessage[indexAffected]) {
-                crack = nextCrack(crack);
-                System.out.printf("Crack [%d]: %s\n", k, crack);
-                String crackedMessage = buildCrackedMessage(modifiedMessage, crack);
-                System.out.printf("Cracked message: %s\n", crackedMessage);
-                hashCrackedMessage = notSoComplexHash(crackedMessage);
-                System.out.printf("Cracked message hash: %s\n", Arrays.toString(hashCrackedMessage));
+    public List<Byte> getCrackForByte(byte originalByte, byte modifiedByte) {
+        List<Byte> crack = new ArrayList<>();
+        byte difference = (byte) (originalByte - modifiedByte);
+        if (difference != 0) {
+            crack.add(difference);
+            if (difference < 48 || difference > 122) {
+                crack.add((byte) 48);
+                crack.add((byte) 84);
+                crack.add((byte) 'z');
             }
-            k++;
         }
-        System.out.printf("K = %d\n", k);
+        System.out.printf("Crack: %s\n", crack.toString());
         return crack;
     }
 
-    public byte[] bytesToReachOriginal(byte original, byte modified, byte start) {
-        byte total = modified;
-        byte currentChar = start;
-        List<Byte> characters = new ArrayList<>();
-        while (total != original) {
-            if (currentChar > 122) {
-                break;
+    public void printHashBytes(String message) {
+        Map<Integer, List<Byte>> hashSequences = new HashMap<>();
+        byte[] textBytes = message.getBytes(StandardCharsets.ISO_8859_1);
+        for (int i = 0; i < textBytes.length; i++) {
+            if (hashSequences.get(i % 16) == null) {
+                hashSequences.put(i % 16, new ArrayList<>());
             }
-            total = (byte) (total + currentChar);
-            characters.add(currentChar);
-            currentChar++;
+            hashSequences.get(i % 16).add(textBytes[i]);
         }
-        byte[] bytes = new byte[characters.size()];
-        for (int i = 0; i < characters.size(); i++) {
-            bytes[i] = characters.get(i);
+        for (int i = 0; i < 16; i++) {
+            System.out.printf("Hash sequence %d: %s\n", i, hashSequences.get(i));
         }
-        return bytes;
     }
 
-    public String nextCrack(String crack) {
+    public String incrementCrack(String crack) {
         return new String(incrementCrack(crack.getBytes()));
     }
 
@@ -173,6 +200,15 @@ public class Challenge7 {
             return new byte[]{'0'};
         }
 
+        if (crack.length == 1) {
+            if (crack[0] != 'z') {
+                crack[0]++;
+                return crack;
+            }
+        }
+
+        // Length > 1
+
         int i = 0;
         for (byte b : crack) {
             if (b == 'z') {
@@ -180,67 +216,41 @@ public class Challenge7 {
                 continue;
             }
         }
+
         if (i == crack.length) {
             // Add character to sequence
             byte[] newCrack = new byte[crack.length + 1];
             Arrays.fill(newCrack, (byte) '0');
+            System.out.printf("crack: %s\n", new String(newCrack));
+            String crackedMessage = buildCrackedMessage(new String(newCrack));
+            System.out.printf("Cracked message hash: %s\n",
+                              Arrays.toString(notSoComplexHash(crackedMessage)));
             return newCrack;
         }
 
         for (int j = crack.length - 1; j >= 0; j--) {
-            if (crack[j] < 122) {
-                crack[j] = (byte) (crack[j] + 1);
-                if (j < crack.length - 1) {
-                    crack[j + 1] = (byte) '0';
-                }
+            crack[j]++;
+            if (crack[j] > 'z') {
+                crack[j] = '0';
+            } else {
                 break;
             }
         }
         return crack;
     }
 
-    public String nextCrack2(String crack) {
-        StringBuilder crackStringBuilder = new StringBuilder(crack);
-        if (crack.length() == 0) {
-            crackStringBuilder.append((char) 48);
-        } else if (crack.charAt(crack.length() - 1) == 'z') {
-            crackStringBuilder.setCharAt(crack.length() - 1, (char) 48);
-            crackStringBuilder.append((char) 48);
-        } else {
-            char currentChar = crackStringBuilder.charAt(crack.length() - 1);
-            crackStringBuilder.setCharAt(crack.length() - 1, ++currentChar);
+    public boolean hasSameHash(String message, byte[] hash) {
+        for (int i = 0; i < 16; i++) {
+            if (notSoComplexHashForIndex(message, i) != hash[i]) {
+                return false;
+            }
         }
-        return crackStringBuilder.toString();
+        return true;
     }
 
-    private boolean areEquals(byte[] hash, byte[] anotherHash) {
-        return Arrays.equals(hash, anotherHash);
-    }
-
-    private byte sumByteArray(byte[] hash) {
-        byte total = 0;
-        for (byte b : hash) {
-            total += b;
-        }
-        return total;
-    }
-
-    private int sumByteArrayAsInt(byte[] hash) {
-        int total = 0;
-        for (byte b : hash) {
-            total += (int) b;
-        }
-        return total;
-    }
-
-    private String buildCrackedMessage(String modifiedMessage, String crack) {
-        int printSectionIndex = modifiedMessage.indexOf(PRINT_SECTION_SEPARATOR);
-//        System.out.printf("Hash index affected: %d\n", (printSectionIndex + 2 + crack.length()) % 16);
-        String crackedMessage = modifiedMessage.substring(0, printSectionIndex)
-                + PRINT_SECTION_SEPARATOR
+    private String buildCrackedMessage(String crack) {
+        return this.preamble
                 + crack
-                + modifiedMessage.substring(printSectionIndex + PRINT_SECTION_SEPARATOR.length());
-//        System.out.printf("Cracked message: %s\n", crackedMessage);
-        return crackedMessage;
+                + this.body;
     }
 }
