@@ -1,2 +1,3 @@
 # tuenti-challenge9
-Solutions to Tuenti Challenge 9 problems
+Solutions for Tuenti Challenge 9
+https://contest.tuenti.net/
